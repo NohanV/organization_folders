@@ -71,6 +71,15 @@ class ResourceService {
 		return $this->mapper->findAll($organizationFolderId, $parentResourceId, $filters);
 	}
 
+	/**
+	 * Load every resource of an organization folder (all tree levels) in a single query.
+	 * @param int $organizationFolderId
+	 * @return Resource[]
+	 */
+	public function findAllInOrganizationFolder(int $organizationFolderId): array {
+		return $this->mapper->findAllInOrganizationFolder($organizationFolderId);
+	}
+
 	private function handleException(Exception $e, array $criteria): Exception {
 		if ($e instanceof DoesNotExistException ||
 			$e instanceof MultipleObjectsReturnedException) {

@@ -148,6 +148,27 @@ class ResourceMemberMapper extends QBMapper {
 	 * @return array
 	 * @psalm-return ResourceMember[]
 	 */
+	/**
+	 * Load all members (every permission level) of every resource in an
+	 * organization folder in a single query.
+	 *
+	 * @param int $organizationFolderId
+	 * @return array
+	 * @psalm-return ResourceMember[]
+	 */
+	public function findAllInOrganizationFolder(int $organizationFolderId): array {
+		/* @var $qb IQueryBuilder */
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('member.*')
+			->from(self::RESOURCES_TABLE, "resource")
+			->where($qb->expr()->eq('resource.organization_folder_id', $qb->createNamedParameter($organizationFolderId, IQueryBuilder::PARAM_INT)));
+
+		$qb->innerJoin('resource', self::RESOURCE_MEMBERS_TABLE, 'member', $qb->expr()->eq('resource.id', 'member.resource_id'));
+
+		return $this->findEntities($qb);
+	}
+
 	public function findAllManagersInOrganizationFolder(int $organizationFolderId): array {
 		/* @var $qb IQueryBuilder */
 		$qb = $this->db->getQueryBuilder();

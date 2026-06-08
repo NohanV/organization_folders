@@ -131,6 +131,16 @@ class ResourceMemberService extends AMemberService {
 		return $this->mapper->findAllManagersInOrganizationFolder($organizationFolderId);
 	}
 
+	/**
+	 * Load all members (every permission level) of every resource in an organization folder.
+	 * @param int $organizationFolderId
+	 * @return array
+	 * @psalm-return ResourceMember[]
+	 */
+	public function findAllInOrganizationFolder(int $organizationFolderId): array {
+		return $this->mapper->findAllInOrganizationFolder($organizationFolderId);
+	}
+
 	public function isUserIndividualMemberOfTopLevelResourceOfOrganizationFolder(int $organizationFolderId, string $userId): bool {
 		return $this->mapper->isUserIndividualMemberOfTopLevelResourceOfOrganizationFolder($organizationFolderId, $userId);
 	}

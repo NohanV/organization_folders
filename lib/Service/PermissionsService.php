@@ -281,20 +281,36 @@ class PermissionsService {
 	 * @param bool $implicitlyDeactivated
 	 * @return \Generator<mixed, ResourcePermissionsList, mixed, void>
 	 */
+	/**
+	 * @param array<int, Resource[]>|null $resourcesByParent map of parentResourceId (0 for top-level) to child resources
+	 * @param array<int, array{members?: ResourceMember[], managers?: ResourceMember[]}>|null $membersByResource map of resourceId to its members grouped by permission level
+	 *
+	 * When $resourcesByParent and $membersByResource are provided, children and members
+	 * are read from those pre-loaded maps instead of issuing one query per resource.
+	 * This is used by the organization-folder-wide path to avoid N+1 queries.
+	 */
 	private function generateResourcePermissionsListsRecursively(
 		array $resources,
 		array $inheritedMemberPrincipals,
 		array $inheritedManagerPrincipals,
 		bool $implicitlyDeactivated = false,
 		bool $enableOriginTracing = false,
+		?array $resourcesByParent = null,
+		?array $membersByResource = null,
 	) {
 		foreach($resources as $resource) {
-			$resourceMembers = $this->resourceMemberService->findAll($resource->getId(), [
-				"permissionLevel" => ResourceMemberPermissionLevel::MEMBER,
-			]);
-			$resourceManagers = $this->resourceMemberService->findAll($resource->getId(), [
-				"permissionLevel" => ResourceMemberPermissionLevel::MANAGER,
-			]);
+			if($membersByResource !== null) {
+				$grouped = $membersByResource[$resource->getId()] ?? [];
+				$resourceMembers = $grouped["members"] ?? [];
+				$resourceManagers = $grouped["managers"] ?? [];
+			} else {
+				$resourceMembers = $this->resourceMemberService->findAll($resource->getId(), [
+					"permissionLevel" => ResourceMemberPermissionLevel::MEMBER,
+				]);
+				$resourceManagers = $this->resourceMemberService->findAll($resource->getId(), [
+					"permissionLevel" => ResourceMemberPermissionLevel::MANAGER,
+				]);
+			}
 
 			[
 				"permissionsList" => $permissionsList,
@@ -313,7 +329,11 @@ class PermissionsService {
 
 			yield $permissionsList;
 
-			$subResources = $this->resourceService->getSubResources($resource);
+			if($resourcesByParent !== null) {
+				$subResources = $resourcesByParent[$resource->getId()] ?? [];
+			} else {
+				$subResources = $this->resourceService->getSubResources($resource);
+			}
 
 			yield from $this->generateResourcePermissionsListsRecursively(
 				resources: $subResources,
@@ -321,6 +341,8 @@ class PermissionsService {
 				inheritedManagerPrincipals: $nextInheritedManagerPrincipals,
 				implicitlyDeactivated: $nextImplicitlyDeactivated,
 				enableOriginTracing: $enableOriginTracing,
+				resourcesByParent: $resourcesByParent,
+				membersByResource: $membersByResource,
 			);
 		}
 	}
@@ -341,7 +363,25 @@ class PermissionsService {
 		?array $organizationFolderManagerPrincipals = null,
 		bool $enableOriginTracing = false,
 	) {
-		$topLevelResources = $this->resourceService->findAll($organizationFolder->getId(), null);
+		// Batch-load every resource and every member of the organization folder with
+		// two queries, then build in-memory maps so the recursion below issues no
+		// per-resource queries (previously ~3 queries per resource).
+		$allResources = $this->resourceService->findAllInOrganizationFolder($organizationFolder->getId());
+
+		/** @var array<int, Resource[]> $resourcesByParent (0 = top-level) */
+		$resourcesByParent = [];
+		foreach($allResources as $resource) {
+			$resourcesByParent[$resource->getParentResourceId() ?? 0][] = $resource;
+		}
+
+		/** @var array<int, array{members: ResourceMember[], managers: ResourceMember[]}> $membersByResource */
+		$membersByResource = [];
+		foreach($this->resourceMemberService->findAllInOrganizationFolder($organizationFolder->getId()) as $member) {
+			$bucket = ($member->getPermissionLevel() === ResourceMemberPermissionLevel::MANAGER->value) ? "managers" : "members";
+			$membersByResource[$member->getResourceId()][$bucket][] = $member;
+		}
+
+		$topLevelResources = $resourcesByParent[0] ?? [];
 
 		if(!(isset($organizationFolderMemberPrincipals) && isset($organizationFolderManagerPrincipals))) {
 			[$organizationFolderMemberPrincipals, $organizationFolderManagerPrincipals] = $this->organizationFolderService->getMemberAndManagerPrincipals($organizationFolder);
@@ -355,6 +395,8 @@ class PermissionsService {
 			inheritedMemberPrincipals: $inheritedMemberPrincipals,
 			inheritedManagerPrincipals: $inheritedManagerPrincipals,
 			enableOriginTracing: $enableOriginTracing,
+			resourcesByParent: $resourcesByParent,
+			membersByResource: $membersByResource,
 		);
 	}
 
