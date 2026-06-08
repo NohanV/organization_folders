@@ -111,6 +111,16 @@ class ResourceMemberService extends AMemberService {
 		return $this->mapper->findAllTopLevelResourcesMembersOfOrganizationFolder($organizationFolderId, $mapperFilters);
 	}
 
+	/**
+	 * Load all manager members of the given resources in a single query.
+	 * @param int[] $resourceIds
+	 * @return array
+	 * @psalm-return ResourceMember[]
+	 */
+	public function findManagersByResourceIds(array $resourceIds): array {
+		return $this->mapper->findManagersByResourceIds($resourceIds);
+	}
+
 	public function isUserIndividualMemberOfTopLevelResourceOfOrganizationFolder(int $organizationFolderId, string $userId): bool {
 		return $this->mapper->isUserIndividualMemberOfTopLevelResourceOfOrganizationFolder($organizationFolderId, $userId);
 	}

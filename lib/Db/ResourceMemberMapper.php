@@ -9,6 +9,7 @@ use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 
 use OCA\OrganizationFolders\Enum\PrincipalType;
+use OCA\OrganizationFolders\Enum\ResourceMemberPermissionLevel;
 use OCA\OrganizationFolders\Model\PrincipalFactory;
 
 class ResourceMemberMapper extends QBMapper {
@@ -107,6 +108,32 @@ class ResourceMemberMapper extends QBMapper {
 			$qb->andWhere($qb->expr()->eq('principal_type', $qb->createNamedParameter($filters["principalType"], IQueryBuilder::PARAM_INT)));
 		}
 		
+		return $this->findEntities($qb);
+	}
+
+	/**
+	 * Load all manager members of the given resources in a single query.
+	 *
+	 * Used by ResourceVoter::isGrantedLimitedRead to check direct manager rights
+	 * across a whole resource subtree without issuing one query per resource.
+	 *
+	 * @param int[] $resourceIds
+	 * @return array
+	 * @psalm-return ResourceMember[]
+	 */
+	public function findManagersByResourceIds(array $resourceIds): array {
+		if(count($resourceIds) === 0) {
+			return [];
+		}
+
+		/* @var $qb IQueryBuilder */
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('*')
+			->from(self::RESOURCE_MEMBERS_TABLE)
+			->where($qb->expr()->in('resource_id', $qb->createNamedParameter($resourceIds, IQueryBuilder::PARAM_INT_ARRAY)))
+			->andWhere($qb->expr()->eq('permission_level', $qb->createNamedParameter(ResourceMemberPermissionLevel::MANAGER->value, IQueryBuilder::PARAM_INT)));
+
 		return $this->findEntities($qb);
 	}
 
