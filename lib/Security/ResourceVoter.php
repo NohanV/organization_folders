@@ -66,6 +66,31 @@ class ResourceVoter extends Voter {
 	 * @param Resource $resource
 	 * @return bool
 	 */
+	/**
+	 * Whether the user is a direct manager of any resource within the
+	 * organization folder.
+	 *
+	 * This is equivalent to READ_DIRECT or READ_LIMITED being granted on any of
+	 * the folder's top-level resources (manager of the resource itself or of any
+	 * descendant), but is evaluated with a single query over all manager members
+	 * of the folder instead of iterating and recursing over the resource tree.
+	 *
+	 * @param IUser $user
+	 * @param int $organizationFolderId
+	 * @return bool
+	 */
+	public function isDirectManagerOfAnyResourceInOrganizationFolder(IUser $user, int $organizationFolderId): bool {
+		$managerMembers = $this->resourceMemberService->findAllManagersInOrganizationFolder($organizationFolderId);
+
+		foreach($managerMembers as $managerMember) {
+			if($this->userIsManagerMember($user, $managerMember)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	private function isResourceManagerDirect(IUser $user, Resource $resource): bool {
 		$resourceMembers = $this->resourceMemberService->findAll(
 			resourceId: $resource->getId(),
