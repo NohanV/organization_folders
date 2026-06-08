@@ -204,7 +204,7 @@ class ResourceMapper extends QBMapper {
 
 		$qb->andWhere($qb->expr()->eq('name', $qb->createNamedParameter($name, IQueryBuilder::PARAM_STR)));
 
-		return (int)$qb->executeQuery()->fetch()["COUNT(1)"] >= 1;
+		return (int)$qb->executeQuery()->fetchOne() >= 1;
 	}
 
 	public function existAnyCreatedFromTemplate(int $organizationFolderId, string $providerId, string $templateId): bool {
@@ -215,7 +215,7 @@ class ResourceMapper extends QBMapper {
 			->where($qb->expr()->eq('organization_folder_id', $qb->createNamedParameter($organizationFolderId, IQueryBuilder::PARAM_INT)))
 			->andWhere($qb->expr()->eq('created_from_template_id', $qb->createNamedParameter($providerId . ":" . $templateId, IQueryBuilder::PARAM_STR)));
 
-		return (int)$qb->executeQuery()->fetch()["COUNT(1)"] >= 1;
+		return (int)$qb->executeQuery()->fetchOne() >= 1;
 	}
 
 	/**

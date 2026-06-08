@@ -98,6 +98,6 @@ class OrganizationFolderMemberMapper extends QBMapper {
 			->andWhere($qb->expr()->eq('principal_type', $qb->createNamedParameter($principalType, IQueryBuilder::PARAM_INT)))
 			->andWhere($qb->expr()->eq('principal_id', $qb->createNamedParameter($principalId)));
 
-		return (int)$qb->executeQuery()->fetch()["COUNT(1)"] >= 1;
+		return (int)$qb->executeQuery()->fetchOne() >= 1;
 	}
 }

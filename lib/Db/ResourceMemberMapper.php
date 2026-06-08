@@ -199,7 +199,7 @@ class ResourceMemberMapper extends QBMapper {
 
 		$qb->andWhere($qb->expr()->eq('member.principal_type', $qb->createNamedParameter(PrincipalType::USER->value, IQueryBuilder::PARAM_INT)));
 
-		return $qb->executeQuery()->fetch(\PDO::FETCH_NUM)[0];
+		return (int)$qb->executeQuery()->fetchOne();
 	}
 
 	public function hasOrganizationFolderTopLevelResourceIndividualMembers(int $organizationFolderId): bool {
@@ -215,7 +215,7 @@ class ResourceMemberMapper extends QBMapper {
 
 		$qb->andWhere($qb->expr()->eq('member.principal_type', $qb->createNamedParameter(PrincipalType::USER->value, IQueryBuilder::PARAM_INT)));
 
-		return $qb->executeQuery()->fetch()["COUNT(1)"] >= 1;
+		return (int)$qb->executeQuery()->fetchOne() >= 1;
 	}
 
 	public function isUserIndividualMemberOfTopLevelResourceOfOrganizationFolder(int $organizationFolderId, string $userId): bool {
@@ -232,7 +232,7 @@ class ResourceMemberMapper extends QBMapper {
 		$qb->andWhere($qb->expr()->eq('member.principal_type', $qb->createNamedParameter(PrincipalType::USER->value, IQueryBuilder::PARAM_INT)));
 		$qb->andWhere($qb->expr()->eq('member.principal_id', $qb->createNamedParameter($userId)));
 
-		return $qb->executeQuery()->fetch()["COUNT(1)"] >= 1;
+		return (int)$qb->executeQuery()->fetchOne() >= 1;
 	}
 
 	public function getIdsOfOrganizationFoldersUserIsTopLevelResourceIndividualMemberIn(string $userId): array {
@@ -292,6 +292,6 @@ class ResourceMemberMapper extends QBMapper {
 			->andWhere($qb->expr()->eq('principal_type', $qb->createNamedParameter($principalType, IQueryBuilder::PARAM_INT)))
 			->andWhere($qb->expr()->eq('principal_id', $qb->createNamedParameter($principalId)));
 
-		return (int)$qb->executeQuery()->fetch()["COUNT(1)"] >= 1;
+		return (int)$qb->executeQuery()->fetchOne() >= 1;
 	}
 }
