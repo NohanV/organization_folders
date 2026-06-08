@@ -11,6 +11,7 @@ use OCP\IGroup;
 use OCP\IUserManager;
 use OCP\IUser;
 use OCP\IUserSession;
+use OCP\ICacheFactory;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
 use OCP\EventDispatcher\IEventDispatcher;
@@ -21,6 +22,7 @@ use OCA\OrganizationFolders\Errors\Api\ActionCancelled;
 
 use OCA\OrganizationFolders\Db\ResourceMember;
 use OCA\OrganizationFolders\Db\ResourceMemberMapper;
+use OCA\OrganizationFolders\Groups\GroupBackend;
 use OCA\OrganizationFolders\DTO\CreateResourceMemberDto;
 use OCA\OrganizationFolders\Enum\ResourceMemberPermissionLevel;
 use OCA\OrganizationFolders\Enum\PrincipalType;
@@ -42,7 +44,23 @@ class ResourceMemberService extends AMemberService {
 		protected readonly PrincipalFactory $principalFactory,
 		protected readonly IEventDispatcher $eventDispatcher,
 		protected readonly IUserSession $userSession,
+		protected readonly ICacheFactory $cacheFactory,
     ) {
+	}
+
+	/**
+	 * Invalidate the cached virtual group memberships (GroupBackend::getUserGroups)
+	 * for the user behind a principal, if any. Top-level resource user members are
+	 * exposed as implied-individual-member virtual groups, so their membership cache
+	 * must be cleared whenever such a membership is added, changed or removed.
+	 * Over-clearing (e.g. for sub-resource members) is harmless: it only forces a
+	 * recompute on the next lookup.
+	 */
+	private function invalidateUserGroupsCacheForPrincipal(?Principal $principal): void {
+		if ($principal instanceof UserPrincipal) {
+			$cache = $this->cacheFactory->createLocal(GroupBackend::GET_USER_GROUPS_CACHE_KEY);
+			$cache->remove($principal->getId());
+		}
 	}
 
 	/**
@@ -193,6 +211,8 @@ class ResourceMemberService extends AMemberService {
 
 		$member = $this->mapper->insert($member);
 
+		$this->invalidateUserGroupsCacheForPrincipal($principal);
+
 		if(!$skipPermssionsApply) {
 			$this->organizationFolderService->applyAllPermissionsById($resource->getOrganizationFolderId());
 		}
@@ -224,6 +244,8 @@ class ResourceMemberService extends AMemberService {
                 $member->setPermissionLevel($permissionLevel->value);
             }
 
+            $oldPrincipal = $member->getPrincipal();
+
             if(isset($principal)) {
 				$member->setPrincipal($principal);
             }
@@ -233,6 +255,12 @@ class ResourceMemberService extends AMemberService {
 
 				$member = $this->mapper->update($member);
             }
+
+			// clear cached virtual group memberships for the (possibly changed) principal
+			$this->invalidateUserGroupsCacheForPrincipal($oldPrincipal);
+			if(isset($principal)) {
+				$this->invalidateUserGroupsCacheForPrincipal($principal);
+			}
 
 			$this->organizationFolderService->applyAllPermissionsById($resource->getOrganizationFolderId());
 
@@ -261,6 +289,9 @@ class ResourceMemberService extends AMemberService {
 			}
 
 			$this->mapper->delete($member);
+
+			$this->invalidateUserGroupsCacheForPrincipal($member->getPrincipal());
+
 			$this->organizationFolderService->applyAllPermissionsById($resource->getOrganizationFolderId());
 
 			return $member;

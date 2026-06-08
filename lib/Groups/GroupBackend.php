@@ -19,6 +19,8 @@ class GroupBackend extends ABackend implements ICountUsersBackend {
 	public const IMPLIED_INDIVIDUAL_GROUP_END = "_IMPLIED_INDIVIDUAL_MEMBER";
 	public const IMPLIED_INDIVIDUAL_GROUP_END_LENGTH = 27;
 
+	public const GET_USER_GROUPS_CACHE_KEY = "organization_folders_group_backend_get_user_groups";
+
 	public function __construct(
 		protected readonly IUserManager $userManager,
 		protected readonly ResourceMemberService $resourceMemberService,
@@ -68,7 +70,7 @@ class GroupBackend extends ABackend implements ICountUsersBackend {
 			return [];
 		}
 
-		$cache = $this->cacheFactory->createLocal('organization_folders_group_backend_get_user_groups');
+		$cache = $this->cacheFactory->createLocal(self::GET_USER_GROUPS_CACHE_KEY);
 		$result = $cache->get($uid);
 		if ($result !== null) {
 			return json_decode($result);
