@@ -278,7 +278,7 @@ class ResourceController extends BaseController {
 		return $this->handleErrors(function () use ($resourceId, $include) {
 			$resource = $this->service->find($resourceId);
 
-			$this->authorizationService->isGranted(["READ", "READ_LIMITED"], $resource);
+			$this->denyAccessUnlessGranted(["READ", "READ_LIMITED"], $resource);
 
 			return $this->getSubResources($resource, $include);
 		});
