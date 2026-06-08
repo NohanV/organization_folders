@@ -697,7 +697,7 @@ class ResourceService {
 	}
 
 	public function promoteUnmanagedSubfolder(FolderResource $resource, string $unmanagedSubfolderName) {
-		if(strlen("unmanagedSubfolderName") == 0) {
+		if(strlen($unmanagedSubfolderName) == 0) {
 			throw new Exception("Subfolder does not exist");
 		}
 
