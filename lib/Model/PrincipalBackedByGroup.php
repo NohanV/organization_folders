@@ -41,7 +41,7 @@ abstract class PrincipalBackedByGroup extends Principal {
 	}
 
 	public function getNumberOfUsersContained(): int {
-		if($this->valid) {
+		if($this->isValid()) {
 			return $this->getBackingGroup()?->count() ?? 0;
 		} else {
 			return 0;
@@ -52,7 +52,7 @@ abstract class PrincipalBackedByGroup extends Principal {
 	 * @return IUser[]
 	 */
 	public function getUsersContained(): array {
-		if($this->valid) {
+		if($this->isValid()) {
 			return $this->getBackingGroup()?->getUsers() ?? [];
 		} else {
 			return [];

@@ -46,6 +46,20 @@ class OrganizationFolderService {
 	) {
 	}
 
+	/**
+	 * Request-scoped cache for find(). find() is called repeatedly with the same id
+	 * within a single request (e.g. once per resource by the voters / PropFind), and
+	 * each call hits the tag service. The cache is invalidated whenever this service
+	 * mutates an organization folder (update/remove); create() populates it with fresh
+	 * data. OrganizationFolder is an immutable value object, so sharing instances is safe.
+	 * @var array<int, OrganizationFolder>
+	 */
+	private array $findCache = [];
+
+	private function invalidateFindCache(int $id): void {
+		unset($this->findCache[$id]);
+	}
+
 	private const TAG_ORGANIZATION_FOLDER = "organization_folder";
 
 	// TODO: Prefix with "organization_folder:"
@@ -101,6 +115,10 @@ class OrganizationFolderService {
 	}
 
 	public function find(int $id): OrganizationFolder {
+		if(isset($this->findCache[$id])) {
+			return $this->findCache[$id];
+		}
+
 		$groupfolder = $this->tagService->findGroupfolderWithTags($id,[
 			["key" => static::TAG_ORGANIZATION_FOLDER],
 		], [static::TAG_ORGANIZATION_PROVIDER, static::TAG_ORGANIZATION_ID, static::TAG_SERVICE_ACCOUNT_UID]);
@@ -109,7 +127,7 @@ class OrganizationFolderService {
 			throw new OrganizationFolderNotFound(["id" => $id]);
 		}
 
-		return new OrganizationFolder(
+		$organizationFolder = new OrganizationFolder(
 			id: $groupfolder["id"],
 			name: $groupfolder["mount_point"],
 			quota: $groupfolder["quota"],
@@ -119,6 +137,10 @@ class OrganizationFolderService {
 			organizationId: (int)$groupfolder[static::TAG_ORGANIZATION_ID],
 			serviceAccountUid: $groupfolder[static::TAG_SERVICE_ACCOUNT_UID],
 		);
+
+		$this->findCache[$id] = $organizationFolder;
+
+		return $organizationFolder;
 	}
 
 	/**
@@ -238,6 +260,9 @@ class OrganizationFolderService {
 				$this->tagService->update($id, static::TAG_SERVICE_ACCOUNT_UID, $serviceAccountUid);
 			}
 		}, $this->db);
+
+		// underlying name/quota/tags may have changed above; drop any cached copy
+		$this->invalidateFindCache($id);
 
 		$organizationFolder = $this->find($id);
 
@@ -446,6 +471,7 @@ class OrganizationFolderService {
 	public function remove($id): void {
 		$organizationFolder = $this->find($id);
 		$this->folderManager->removeFolder($organizationFolder->getId());
+		$this->invalidateFindCache($id);
 	}
 
 }

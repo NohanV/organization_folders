@@ -13,18 +13,37 @@ use OCA\GroupFolders\ACL\UserMapping\UserMapping;
 use OCA\OrganizationFolders\Enum\PrincipalType;
 
 class UserPrincipal extends Principal {
-	private ?IUser $user;
+	private ?IUser $user = null;
+	private bool $resolved = false;
 
 	public function __construct(
 		private IUserManager $userManager,
 		private string $id,
 	) {
-		try {
-			$this->user = $this->userManager->get($id);
-			$this->valid = !is_null($this->user);
-		} catch (\Exception $e) {
-			$this->valid = false;
+	}
+
+	/**
+	 * Resolve the backing user lazily. Loading the user (and computing validity)
+	 * is deferred until something actually needs it, so bulk-loading user members
+	 * for the permission/ACL apply path does not trigger one IUserManager lookup
+	 * per member (those paths only use getId()/toGroupfolderAclMapping()).
+	 */
+	private function resolve(): void {
+		if($this->resolved) {
+			return;
 		}
+		try {
+			$this->user = $this->userManager->get($this->id);
+		} catch (\Exception $e) {
+			$this->user = null;
+		}
+		$this->valid = !is_null($this->user);
+		$this->resolved = true;
+	}
+
+	public function isValid(): bool {
+		$this->resolve();
+		return $this->valid;
 	}
 
 	public function getType(): PrincipalType {
@@ -36,21 +55,19 @@ class UserPrincipal extends Principal {
 	}
 
 	public function getFriendlyName(): string {
+		$this->resolve();
 		return $this->user?->getDisplayName() ?? $this->getId();
 	}
 
 	public function getNumberOfUsersContained(): int {
-		if($this->valid) {
-			return 1;
-		} else {
-			return 0;
-		}
+		return $this->isValid() ? 1 : 0;
 	}
 
 	/**
 	 * @return IUser[]
 	 */
 	public function getUsersContained(): array {
+		$this->resolve();
 		if($this->valid) {
 			return [$this->user];
 		} else {

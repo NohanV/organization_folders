@@ -11,7 +11,7 @@ use OCA\GroupFolders\ACL\UserMapping\IUserMapping;
 use OCA\OrganizationFolders\Enum\PrincipalType;
 
 abstract class Principal implements \JsonSerializable {
-	protected bool $valid;
+	protected bool $valid = false;
 
 	abstract public function getType(): PrincipalType;
 
@@ -61,7 +61,7 @@ abstract class Principal implements \JsonSerializable {
 		return [
 			'type' => $this->getType(),
 			'id' => $this->getId(),
-			'valid' => $this->valid,
+			'valid' => $this->isValid(),
 			'friendlyName' => $this->getFriendlyName(),
 			'fullHierarchyNames' => $this->getFullHierarchyNames(),
 		];
