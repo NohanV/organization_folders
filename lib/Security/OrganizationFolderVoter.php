@@ -12,7 +12,6 @@ use OCA\OrganizationFolders\Model\OrganizationMemberPrincipal;
 use OCA\OrganizationFolders\Model\OrganizationRolePrincipal;
 use OCA\OrganizationFolders\Model\OrganizationFolder;
 use OCA\OrganizationFolders\Service\OrganizationFolderMemberService;
-use OCA\OrganizationFolders\Service\ResourceService;
 use OCA\OrganizationFolders\Enum\OrganizationFolderMemberPermissionLevel;
 use OCA\OrganizationFolders\OrganizationProvider\OrganizationProviderManager;
 
@@ -20,7 +19,6 @@ class OrganizationFolderVoter extends Voter {
 	public function __construct(
 		private IGroupManager $groupManager,
 		private OrganizationFolderMemberService $organizationFolderMemberService,
-		private ResourceService $resourceService,
 		private OrganizationProviderManager $organizationProviderManager,
 	) {
 	}
@@ -123,26 +121,18 @@ class OrganizationFolderVoter extends Voter {
 			return true;
 		}
 
-		// TODO: potential performance improvement:
-		// While we cannot fetch a whole subgraph of the resources graph without recursion (so this optimization is not possible if we are only checking a subgraph
-		// like in the resourceVoter READ_LIMITED), we can fetch the whole resources graph of a groupfolder efficiently.
-		// So instead of asking for READ_LIMITED on the top level resources we could fetch all resources of the organization folder here and check them here
-		// as a flat list instead of recursively with fewer queries. We could also use a join to get all members directly with just one query.
-
-		$resources = $this->resourceService->findAll($organizationFolder->getId());
+		// Being a manager (READ_DIRECT) of, or having READ_LIMITED on, any top-level
+		// resource is equivalent to being a direct manager of any resource anywhere
+		// in the organization folder. This is checked with a single query (all
+		// manager members of the folder joined in) instead of iterating the
+		// top-level resources and recursing through their subtrees.
 
 		/**
 		 * @var ResourceVoter
 		 */
 		$resourceVoter = \OC::$server->get(ResourceVoter::class);
 
-		foreach ($resources as $resource) {
-			if($resourceVoter->vote($user, $resource, ["READ_DIRECT", "READ_LIMITED"]) === self::ACCESS_GRANTED) {
-				return true;
-			}
-		}
-
-		return false;
+		return $resourceVoter->isDirectManagerOfAnyResourceInOrganizationFolder($user, $organizationFolder->getId());
 	}
 
 	/**

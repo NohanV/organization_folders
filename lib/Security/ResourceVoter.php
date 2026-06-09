@@ -6,6 +6,7 @@ use OCP\IUser;
 use OCP\IGroupManager;
 
 use OCA\OrganizationFolders\Db\Resource;
+use OCA\OrganizationFolders\Db\ResourceMember;
 use OCA\OrganizationFolders\Model\OrganizationFolder;
 use OCA\OrganizationFolders\Model\UserPrincipal;
 use OCA\OrganizationFolders\Model\PrincipalBackedByGroup;
@@ -65,6 +66,31 @@ class ResourceVoter extends Voter {
 	 * @param Resource $resource
 	 * @return bool
 	 */
+	/**
+	 * Whether the user is a direct manager of any resource within the
+	 * organization folder.
+	 *
+	 * This is equivalent to READ_DIRECT or READ_LIMITED being granted on any of
+	 * the folder's top-level resources (manager of the resource itself or of any
+	 * descendant), but is evaluated with a single query over all manager members
+	 * of the folder instead of iterating and recursing over the resource tree.
+	 *
+	 * @param IUser $user
+	 * @param int $organizationFolderId
+	 * @return bool
+	 */
+	public function isDirectManagerOfAnyResourceInOrganizationFolder(IUser $user, int $organizationFolderId): bool {
+		$managerMembers = $this->resourceMemberService->findAllManagersInOrganizationFolder($organizationFolderId);
+
+		foreach($managerMembers as $managerMember) {
+			if($this->userIsManagerMember($user, $managerMember)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	private function isResourceManagerDirect(IUser $user, Resource $resource): bool {
 		$resourceMembers = $this->resourceMemberService->findAll(
 			resourceId: $resource->getId(),
@@ -74,22 +100,37 @@ class ResourceVoter extends Voter {
 		);
 
 		foreach($resourceMembers as $resourceMember) {
-			if($resourceMember->getPermissionLevel() === ResourceMemberPermissionLevel::MANAGER->value) {
-				$principal = $resourceMember->getPrincipal();
-
-				if($principal->isValid()) {
-					// TODO: use new containsPrincipal functionality
-					if($principal instanceof UserPrincipal) {
-						if($principal->getId() === $user->getUID()) {
-							return true;
-						}
-					} else if($principal instanceof PrincipalBackedByGroup) {
-						if($this->userIsInGroup($user, $principal->getBackingGroupId())) {
-							return true;
-						}
-					}
-				}
+			if($this->userIsManagerMember($user, $resourceMember)) {
+				return true;
 			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Returns whether the given resource member grants the user direct manager
+	 * rights (i.e. it is a valid MANAGER member whose principal contains the user).
+	 * @param IUser $user
+	 * @param ResourceMember $resourceMember
+	 * @return bool
+	 */
+	private function userIsManagerMember(IUser $user, ResourceMember $resourceMember): bool {
+		if($resourceMember->getPermissionLevel() !== ResourceMemberPermissionLevel::MANAGER->value) {
+			return false;
+		}
+
+		$principal = $resourceMember->getPrincipal();
+
+		if(!$principal->isValid()) {
+			return false;
+		}
+
+		// TODO: use new containsPrincipal functionality
+		if($principal instanceof UserPrincipal) {
+			return $principal->getId() === $user->getUID();
+		} else if($principal instanceof PrincipalBackedByGroup) {
+			return $this->userIsInGroup($user, $principal->getBackingGroupId());
 		}
 
 		return false;
@@ -131,27 +172,28 @@ class ResourceVoter extends Voter {
 				|| $this->isResourceManager($user, $resource, $resourceOrganizationFolder);
 	}
 
+	/**
+	 * Limited read is granted if the user is a direct manager of any descendant
+	 * resource (so they need to see this resource in limited form to navigate to it).
+	 *
+	 * This is equivalent to the previous recursive implementation
+	 * (isManagerOfAnySubresource over every descendant), but avoids its redundant
+	 * re-traversal of the subtree for every node, and loads the direct manager
+	 * members of the whole subtree in a single query instead of one per resource.
+	 */
 	protected function isGrantedLimitedRead(IUser $user, Resource $resource): bool {
 		$subResources = $this->resourceService->getAllSubResources($resource);
 
-		foreach($subResources as $subResource) {
-			if($this->isManagerOfAnySubresource($user, $subResource)) {
-				return true;
-			}
+		if(count($subResources) === 0) {
+			return false;
 		}
 
-		return false;
-	}
+		$subResourceIds = array_map(static fn(Resource $subResource): int => $subResource->getId(), $subResources);
 
-	protected function isManagerOfAnySubresource(IUser $user, Resource $resource) {
-		if($this->isResourceManagerDirect($user, $resource)) {
-			return true;
-		}
+		$managerMembers = $this->resourceMemberService->findManagersByResourceIds($subResourceIds);
 
-		$subResources = $this->resourceService->getAllSubResources($resource);
-
-		foreach($subResources as $subResource) {
-			if($this->isManagerOfAnySubresource($user, $subResource)) {
+		foreach($managerMembers as $managerMember) {
+			if($this->userIsManagerMember($user, $managerMember)) {
 				return true;
 			}
 		}

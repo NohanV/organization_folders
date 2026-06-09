@@ -9,6 +9,7 @@ use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 
 use OCA\OrganizationFolders\Enum\PrincipalType;
+use OCA\OrganizationFolders\Enum\ResourceMemberPermissionLevel;
 use OCA\OrganizationFolders\Model\PrincipalFactory;
 
 class ResourceMemberMapper extends QBMapper {
@@ -111,6 +112,79 @@ class ResourceMemberMapper extends QBMapper {
 	}
 
 	/**
+	 * Load all manager members of the given resources in a single query.
+	 *
+	 * Used by ResourceVoter::isGrantedLimitedRead to check direct manager rights
+	 * across a whole resource subtree without issuing one query per resource.
+	 *
+	 * @param int[] $resourceIds
+	 * @return array
+	 * @psalm-return ResourceMember[]
+	 */
+	public function findManagersByResourceIds(array $resourceIds): array {
+		if(count($resourceIds) === 0) {
+			return [];
+		}
+
+		/* @var $qb IQueryBuilder */
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('*')
+			->from(self::RESOURCE_MEMBERS_TABLE)
+			->where($qb->expr()->in('resource_id', $qb->createNamedParameter($resourceIds, IQueryBuilder::PARAM_INT_ARRAY)))
+			->andWhere($qb->expr()->eq('permission_level', $qb->createNamedParameter(ResourceMemberPermissionLevel::MANAGER->value, IQueryBuilder::PARAM_INT)));
+
+		return $this->findEntities($qb);
+	}
+
+	/**
+	 * Load all manager members of every resource in an organization folder in a
+	 * single query.
+	 *
+	 * Used by OrganizationFolderVoter to decide whether a user manages any
+	 * resource in the folder without iterating/recursing over the resource tree.
+	 *
+	 * @param int $organizationFolderId
+	 * @return array
+	 * @psalm-return ResourceMember[]
+	 */
+	/**
+	 * Load all members (every permission level) of every resource in an
+	 * organization folder in a single query.
+	 *
+	 * @param int $organizationFolderId
+	 * @return array
+	 * @psalm-return ResourceMember[]
+	 */
+	public function findAllInOrganizationFolder(int $organizationFolderId): array {
+		/* @var $qb IQueryBuilder */
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('member.*')
+			->from(self::RESOURCES_TABLE, "resource")
+			->where($qb->expr()->eq('resource.organization_folder_id', $qb->createNamedParameter($organizationFolderId, IQueryBuilder::PARAM_INT)));
+
+		$qb->innerJoin('resource', self::RESOURCE_MEMBERS_TABLE, 'member', $qb->expr()->eq('resource.id', 'member.resource_id'));
+
+		return $this->findEntities($qb);
+	}
+
+	public function findAllManagersInOrganizationFolder(int $organizationFolderId): array {
+		/* @var $qb IQueryBuilder */
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('member.*')
+			->from(self::RESOURCES_TABLE, "resource")
+			->where($qb->expr()->eq('resource.organization_folder_id', $qb->createNamedParameter($organizationFolderId, IQueryBuilder::PARAM_INT)));
+
+		$qb->innerJoin('resource', self::RESOURCE_MEMBERS_TABLE, 'member', $qb->expr()->eq('resource.id', 'member.resource_id'));
+
+		$qb->andWhere($qb->expr()->eq('member.permission_level', $qb->createNamedParameter(ResourceMemberPermissionLevel::MANAGER->value, IQueryBuilder::PARAM_INT)));
+
+		return $this->findEntities($qb);
+	}
+
+	/**
 	 * @param int $organizationFolderId
 	 * @param array{principalType: int} $filters
 	 * @return array
@@ -146,7 +220,7 @@ class ResourceMemberMapper extends QBMapper {
 
 		$qb->andWhere($qb->expr()->eq('member.principal_type', $qb->createNamedParameter(PrincipalType::USER->value, IQueryBuilder::PARAM_INT)));
 
-		return $qb->executeQuery()->fetch(\PDO::FETCH_NUM)[0];
+		return (int)$qb->executeQuery()->fetchOne();
 	}
 
 	public function hasOrganizationFolderTopLevelResourceIndividualMembers(int $organizationFolderId): bool {
@@ -162,7 +236,7 @@ class ResourceMemberMapper extends QBMapper {
 
 		$qb->andWhere($qb->expr()->eq('member.principal_type', $qb->createNamedParameter(PrincipalType::USER->value, IQueryBuilder::PARAM_INT)));
 
-		return $qb->executeQuery()->fetch()["COUNT(1)"] >= 1;
+		return (int)$qb->executeQuery()->fetchOne() >= 1;
 	}
 
 	public function isUserIndividualMemberOfTopLevelResourceOfOrganizationFolder(int $organizationFolderId, string $userId): bool {
@@ -179,7 +253,7 @@ class ResourceMemberMapper extends QBMapper {
 		$qb->andWhere($qb->expr()->eq('member.principal_type', $qb->createNamedParameter(PrincipalType::USER->value, IQueryBuilder::PARAM_INT)));
 		$qb->andWhere($qb->expr()->eq('member.principal_id', $qb->createNamedParameter($userId)));
 
-		return $qb->executeQuery()->fetch()["COUNT(1)"] >= 1;
+		return (int)$qb->executeQuery()->fetchOne() >= 1;
 	}
 
 	public function getIdsOfOrganizationFoldersUserIsTopLevelResourceIndividualMemberIn(string $userId): array {
@@ -239,6 +313,6 @@ class ResourceMemberMapper extends QBMapper {
 			->andWhere($qb->expr()->eq('principal_type', $qb->createNamedParameter($principalType, IQueryBuilder::PARAM_INT)))
 			->andWhere($qb->expr()->eq('principal_id', $qb->createNamedParameter($principalId)));
 
-		return $qb->executeQuery()->fetch()["COUNT(1)"] === 1;
+		return (int)$qb->executeQuery()->fetchOne() >= 1;
 	}
 }

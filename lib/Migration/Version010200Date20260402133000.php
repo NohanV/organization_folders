@@ -32,17 +32,25 @@ class Version010200Date20260402133000 extends SimpleMigrationStep {
 
 		$table = $schema->getTable(self::RESOURCES_TABLE);
 
+		// A default is required so the NOT NULL columns can be added to a table that
+		// already contains rows (e.g. when upgrading from 1.1.1). Without it,
+		// PostgreSQL rejects "ADD COLUMN ... NOT NULL" on a non-empty table
+		// (SQLSTATE 23502). Existing rows are seeded with 0 here and the real
+		// values are backfilled from the folder_resources table in postSchemaChange().
 		$table->addColumn('member_permissions_bitfield', Types::INTEGER, [
 			'length' => 11,
 			'notnull' => true,
+			'default' => 0,
 		]);
 		$table->addColumn('manager_permissions_bitfield', Types::INTEGER, [
 			'length' => 11,
 			'notnull' => true,
+			'default' => 0,
 		]);
 		$table->addColumn('inherited_member_permissions_bitfield', Types::INTEGER, [
 			'length' => 11,
 			'notnull' => true,
+			'default' => 0,
 		]);
 
 		return $schema;

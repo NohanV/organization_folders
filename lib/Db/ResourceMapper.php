@@ -156,6 +156,30 @@ class ResourceMapper extends QBMapper {
 	}
 
 	/**
+	 * Load every resource of an organization folder (all tree levels) in a single
+	 * query, including the type-specific file_id / calendar_id columns.
+	 *
+	 * @param int $organizationFolderId
+	 * @return array
+	 * @psalm-return Resource[]
+	 */
+	public function findAllInOrganizationFolder(int $organizationFolderId): array {
+		/* @var $qb IQueryBuilder */
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('resource.*')
+			->from(self::RESOURCES_TABLE, "resource")
+			->where($qb->expr()->eq('resource.organization_folder_id', $qb->createNamedParameter($organizationFolderId, IQueryBuilder::PARAM_INT)));
+
+		$qb->leftJoin('resource', self::FOLDER_RESOURCES_TABLE, 'folder', $qb->expr()->eq('resource.id', 'folder.resource_id'));
+		$qb->leftJoin('resource', self::CALENDAR_RESOURCES_TABLE, 'calendar', $qb->expr()->eq('resource.id', 'calendar.resource_id'));
+		$qb->addSelect('folder.file_id');
+		$qb->addSelect('calendar.calendar_id');
+
+		return $this->findEntities($qb);
+	}
+
+	/**
 	 * @param int $organizationFolderId
 	 * @psalm-param int $organizationFolderId
 	 * @param int|null $parentResourceId
@@ -204,7 +228,7 @@ class ResourceMapper extends QBMapper {
 
 		$qb->andWhere($qb->expr()->eq('name', $qb->createNamedParameter($name, IQueryBuilder::PARAM_STR)));
 
-		return $qb->executeQuery()->fetch()["COUNT(1)"] === 1;
+		return (int)$qb->executeQuery()->fetchOne() >= 1;
 	}
 
 	public function existAnyCreatedFromTemplate(int $organizationFolderId, string $providerId, string $templateId): bool {
@@ -215,7 +239,7 @@ class ResourceMapper extends QBMapper {
 			->where($qb->expr()->eq('organization_folder_id', $qb->createNamedParameter($organizationFolderId, IQueryBuilder::PARAM_INT)))
 			->andWhere($qb->expr()->eq('created_from_template_id', $qb->createNamedParameter($providerId . ":" . $templateId, IQueryBuilder::PARAM_STR)));
 
-		return $qb->executeQuery()->fetch()["COUNT(1)"] === 1;
+		return (int)$qb->executeQuery()->fetchOne() >= 1;
 	}
 
 	/**
